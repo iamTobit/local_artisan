@@ -103,6 +103,7 @@ export interface PendingArtisan {
   latitude: number | null;
   longitude: number | null;
   profile_image: string | null;
+  profile_image_url?: string | null;
 }
 export interface Dispute {
   id: number;

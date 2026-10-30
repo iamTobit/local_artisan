@@ -90,6 +90,26 @@ describe("Role-specific account dashboards", () => {
     expect(screen.getByRole("link", { name: /Services/ })).toHaveAttribute("href", "/services");
   });
 
+  it("guides an artisan with no profile to complete setup", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.endsWith("/artisan/profile")) return Response.json({}, { status: 404 });
+      if (url.endsWith("/artisan/services")) return Response.json([]);
+      if (url.endsWith("/bookings/history?page=1&limit=10"))
+        return Response.json({ total: 0, page: 1, pages: 0, items: [] });
+      throw new Error(`Unexpected request: ${url}`);
+    });
+
+    renderAccount("artisan");
+
+    expect(await screen.findByText("Setup needed")).toBeInTheDocument();
+    expect(screen.getByText("Complete your artisan profile")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Complete setup" })).toHaveAttribute(
+      "href",
+      "/onboarding",
+    );
+  });
+
   it("shows administrative community metrics", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
       Response.json({

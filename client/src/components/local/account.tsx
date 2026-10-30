@@ -146,12 +146,14 @@ function DashboardMetric({
   detail,
   icon,
   to,
+  loading = false,
 }: {
   label: string;
   value: string | number;
   detail: string;
   icon: ReactNode;
   to: DashboardLink;
+  loading?: boolean;
 }) {
   return (
     <Link className="dashboard-metric" to={to}>
@@ -159,7 +161,7 @@ function DashboardMetric({
         {icon}
         {label}
       </span>
-      <strong>{value}</strong>
+      <strong>{loading ? <span className="dashboard-metric-skeleton" /> : value}</strong>
       <span className="dashboard-metric-detail">{detail}</span>
     </Link>
   );
@@ -189,14 +191,16 @@ function CustomerDashboard() {
       <div className="dashboard-metrics">
         <DashboardMetric
           label="Bookings"
-          value={bookings.isLoading ? "…" : (bookings.data?.total ?? "—")}
+          value={bookings.data?.total ?? "—"}
+          loading={bookings.isLoading}
           detail="Requests and history"
           icon={<CalendarDays />}
           to="/bookings"
         />
         <DashboardMetric
           label="Saved artisans"
-          value={saved.isLoading ? "…" : (saved.data?.length ?? "—")}
+          value={saved.data?.length ?? "—"}
+          loading={saved.isLoading}
           detail="Profiles to revisit"
           icon={<Bookmark />}
           to="/saved-artisans"
@@ -211,7 +215,13 @@ function CustomerDashboard() {
       </div>
       {bookings.error && <ErrorNotice error={bookings.error} retry={() => bookings.refetch()} />}
       {saved.error && <ErrorNotice error={saved.error} retry={() => saved.refetch()} />}
-      <RecentBookings bookings={bookings.data?.items || []} role="customer" />
+      <RecentBookings
+        bookings={bookings.data?.items || []}
+        role="customer"
+        loading={bookings.isLoading}
+        error={bookings.error}
+        retry={() => bookings.refetch()}
+      />
     </section>
   );
 }
@@ -249,20 +259,23 @@ function ArtisanDashboard() {
         <DashboardMetric
           label="Profile"
           value={profileStatus}
+          loading={profile.isLoading}
           detail={profileStatus === "Verified" ? "Visible to customers" : "Check your profile"}
           icon={<ShieldCheck />}
           to="/onboarding"
         />
         <DashboardMetric
           label="Services"
-          value={services.isLoading ? "…" : (services.data?.length ?? "—")}
+          value={services.data?.length ?? "—"}
+          loading={services.isLoading}
           detail="In your catalog"
           icon={<BriefcaseBusiness />}
           to="/services"
         />
         <DashboardMetric
           label="Bookings"
-          value={bookings.isLoading ? "…" : (bookings.data?.total ?? "—")}
+          value={bookings.data?.total ?? "—"}
+          loading={bookings.isLoading}
           detail="Requests and history"
           icon={<CalendarDays />}
           to="/bookings"
@@ -271,9 +284,27 @@ function ArtisanDashboard() {
       {profile.error && !(profile.error instanceof ApiError && profile.error.status === 404) && (
         <ErrorNotice error={profile.error} retry={() => profile.refetch()} />
       )}
+      {profile.error instanceof ApiError && profile.error.status === 404 && (
+        <div className="dashboard-attention">
+          <div>
+            <strong>Complete your artisan profile</strong>
+            <p>
+              Add your location, experience, and contact details to become visible to customers.
+            </p>
+          </div>
+          <Button asChild size="sm">
+            <Link to="/onboarding">Complete setup</Link>
+          </Button>
+        </div>
+      )}
       {services.error && <ErrorNotice error={services.error} retry={() => services.refetch()} />}
-      {bookings.error && <ErrorNotice error={bookings.error} retry={() => bookings.refetch()} />}
-      <RecentBookings bookings={bookings.data?.items || []} role="artisan" />
+      <RecentBookings
+        bookings={bookings.data?.items || []}
+        role="artisan"
+        loading={bookings.isLoading}
+        error={bookings.error}
+        retry={() => bookings.refetch()}
+      />
     </section>
   );
 }
@@ -342,7 +373,19 @@ function AdminDashboard() {
   );
 }
 
-function RecentBookings({ bookings, role }: { bookings: Booking[]; role: "customer" | "artisan" }) {
+function RecentBookings({
+  bookings,
+  role,
+  loading = false,
+  error,
+  retry,
+}: {
+  bookings: Booking[];
+  role: "customer" | "artisan";
+  loading?: boolean;
+  error?: unknown;
+  retry?: () => void;
+}) {
   return (
     <div className="dashboard-recent">
       <div className="dashboard-recent-heading">
@@ -351,7 +394,19 @@ function RecentBookings({ bookings, role }: { bookings: Booking[]; role: "custom
           View all <ArrowRight size={14} />
         </Link>
       </div>
-      {bookings.length ? (
+      {loading ? (
+        <div
+          className="dashboard-recent-skeleton"
+          role="status"
+          aria-label="Loading recent bookings"
+        >
+          <span />
+          <span />
+          <span />
+        </div>
+      ) : error ? (
+        <ErrorNotice error={error} retry={retry} />
+      ) : bookings.length ? (
         <div className="dashboard-booking-list">
           {bookings.slice(0, 3).map((booking) => (
             <Link className="dashboard-booking" to="/bookings" key={booking.id}>

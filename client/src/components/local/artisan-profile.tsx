@@ -41,7 +41,7 @@ export function ArtisanProfilePage({ id }: { id: string }) {
     <main className="container page-main">
       <Button asChild variant="ghost">
         <Link to="/browse">
-          <ArrowLeft /> Back to services
+          <ArrowLeft /> Back to marketplace
         </Link>
       </Button>
       {profile.isLoading ? (
@@ -100,8 +100,12 @@ export function ArtisanProfilePage({ id }: { id: string }) {
                   {reviews.data.items.map((review) => (
                     <article className="public-review" key={review.id}>
                       <div className="public-review-heading">
-                        <span className="public-review-rating">
-                          <Star size={14} fill="currentColor" /> {review.rating} / 5
+                        <span
+                          className="public-review-rating"
+                          aria-label={`${review.rating} out of 5 stars`}
+                        >
+                          <RatingStars rating={review.rating} />
+                          <span>{review.rating} / 5</span>
                         </span>
                         <time dateTime={review.created_at}>
                           {new Intl.DateTimeFormat("en-KE", { dateStyle: "medium" }).format(
@@ -109,7 +113,7 @@ export function ArtisanProfilePage({ id }: { id: string }) {
                           )}
                         </time>
                       </div>
-                      <p>{review.comment || "No written comment."}</p>
+                      <p>{review.comment || "No written feedback provided."}</p>
                     </article>
                   ))}
                 </div>
@@ -140,8 +144,13 @@ function ProfileHeader({ artisan }: { artisan: PublicArtisanProfile }) {
         </span>
       )}
       <div className="public-artisan-identity">
-        <div className="section-label">ARTISAN PROFILE</div>
-        <h1 className="page-title">{artisan.name}</h1>
+        <div className="public-artisan-identity-top">
+          <div>
+            <div className="section-label">ARTISAN</div>
+            <h1 className="page-title">{artisan.name}</h1>
+          </div>
+          <SaveArtisanButton artisan={artisan} redirectTo={`/artisans/${artisan.id}`} />
+        </div>
         <p className="public-artisan-location">
           <MapPin size={14} /> {artisan.county_name} · {artisan.sub_county_name}
         </p>
@@ -152,22 +161,46 @@ function ProfileHeader({ artisan }: { artisan: PublicArtisanProfile }) {
         )}
         <div className="public-artisan-stats">
           {artisan.review_count > 0 && artisan.average_rating !== null ? (
-            <span>
-              <Star size={14} fill="currentColor" /> {artisan.average_rating.toFixed(1)} ·{" "}
-              {artisan.review_count} {artisan.review_count === 1 ? "review" : "reviews"}
+            <span
+              className="public-artisan-rating"
+              aria-label={`${artisan.average_rating.toFixed(1)} out of 5 stars from ${artisan.review_count} ${artisan.review_count === 1 ? "review" : "reviews"}`}
+            >
+              <RatingStars rating={artisan.average_rating} />
+              <span className="public-artisan-stat-copy">
+                {artisan.average_rating.toFixed(1)} · {artisan.review_count}{" "}
+                {artisan.review_count === 1 ? "review" : "reviews"}
+              </span>
             </span>
           ) : (
             <span>No reviews yet</span>
           )}
-          <span>{artisan.experience_years} years of experience</span>
-          <span>{artisan.completed_job_count} completed jobs</span>
+          <span>
+            {artisan.experience_years > 0
+              ? `${artisan.experience_years} years of experience`
+              : "Experience not specified"}
+          </span>
+          <span>
+            {artisan.completed_job_count > 0
+              ? `${artisan.completed_job_count} completed jobs`
+              : "No completed jobs yet"}
+          </span>
         </div>
       </div>
-      <div className="public-artisan-action">
-        <SaveArtisanButton artisan={artisan} redirectTo={`/artisans/${artisan.id}`} />
+      <div className="public-artisan-bio" aria-label="About the artisan">
+        <span className="public-artisan-bio-label">About</span>
+        <p>{artisan.bio || "This artisan has not added a bio yet."}</p>
       </div>
-      {artisan.bio && <p className="public-artisan-bio">{artisan.bio}</p>}
     </header>
+  );
+}
+
+function RatingStars({ rating }: { rating: number }) {
+  return (
+    <span className="rating-stars" aria-hidden="true">
+      {Array.from({ length: 5 }, (_, index) => (
+        <Star key={index} size={14} fill={index < Math.round(rating) ? "currentColor" : "none"} />
+      ))}
+    </span>
   );
 }
 
@@ -182,6 +215,7 @@ export function SaveArtisanButton({
   const queryClient = useQueryClient();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [feedback, setFeedback] = useState("");
   const saved = useQuery({
     queryKey: ["saved-artisans"],
     queryFn: ({ signal }) => api<SavedArtisanRecord[]>("/marketplace/saved-artisans", { signal }),
@@ -193,7 +227,7 @@ export function SaveArtisanButton({
     return (
       <Button variant="outline" asChild>
         <Link to="/auth" search={{ redirect: redirectTo }}>
-          <Heart /> Save artisan
+          <Heart /> Save profile
         </Link>
       </Button>
     );
@@ -204,6 +238,8 @@ export function SaveArtisanButton({
   async function toggleSaved() {
     setBusy(true);
     setError("");
+    setFeedback("");
+    const nextSavedState = !isSaved;
     try {
       if (isSaved) {
         await api<{ saved: false }>(
@@ -219,6 +255,7 @@ export function SaveArtisanButton({
         });
       }
       await queryClient.invalidateQueries({ queryKey: ["saved-artisans"] });
+      setFeedback(nextSavedState ? "Profile saved." : "Profile removed from saved artisans.");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not update saved artisans.");
     } finally {
@@ -233,13 +270,25 @@ export function SaveArtisanButton({
         disabled={busy || saved.isLoading || saved.isError}
         onClick={toggleSaved}
         aria-pressed={isSaved}
+        aria-busy={busy}
       >
         <Heart fill={isSaved ? "currentColor" : "none"} />
-        {busy ? "Saving…" : isSaved ? "Remove saved artisan" : "Save artisan"}
+        {busy
+          ? isSaved
+            ? "Removing…"
+            : "Saving…"
+          : isSaved
+            ? "Remove saved profile"
+            : "Save profile"}
       </Button>
       {(error || saved.error) && (
         <p className="inline-error" role="alert">
           {error || saved.error?.message}
+        </p>
+      )}
+      {feedback && (
+        <p className="success-notice save-artisan-feedback" role="status" aria-live="polite">
+          {feedback}
         </p>
       )}
     </div>

@@ -40,6 +40,7 @@ const profile = {
       description: "Diagnosis and repair for electrical wiring.",
       price_type: "fixed" as const,
       base_price: 2500,
+      specialty: "Electrical",
     },
   ],
   work_photos: ["https://api.example.test/work.jpg"],
@@ -108,7 +109,12 @@ describe("Public artisan profile and saved artisans", () => {
     expect(await screen.findByRole("heading", { name: artisan.name })).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "View profile" })).not.toBeInTheDocument();
     expect(screen.getByText(artisan.bio)).toBeInTheDocument();
+    expect(screen.getByText(`${artisan.experience_years} years of experience`)).toBeInTheDocument();
+    expect(screen.getByLabelText("4.5 out of 5 stars from 11 reviews")).toBeInTheDocument();
     expect(await screen.findByText("Excellent work.")).toBeInTheDocument();
+    expect(screen.getByText("Electrical")).toBeInTheDocument();
+    expect(screen.queryByText("Category #4")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("About the artisan")).toHaveTextContent(artisan.bio);
     fireEvent.click(screen.getByRole("button", { name: "Next" }));
     expect(await screen.findByText("Good communication.")).toBeInTheDocument();
     expect(fetcher).toHaveBeenCalledWith(
@@ -116,10 +122,12 @@ describe("Public artisan profile and saved artisans", () => {
       expect.anything(),
     );
 
-    fireEvent.click(await screen.findByRole("button", { name: "Save artisan" }));
-    expect(await screen.findByRole("button", { name: "Remove saved artisan" })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Remove saved artisan" }));
-    expect(await screen.findByRole("button", { name: "Save artisan" })).toBeInTheDocument();
+    fireEvent.click(await screen.findByRole("button", { name: "Save profile" }));
+    expect(await screen.findByRole("button", { name: "Remove saved profile" })).toBeInTheDocument();
+    expect(await screen.findByText("Profile saved.")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Remove saved profile" }));
+    expect(await screen.findByRole("button", { name: "Save profile" })).toBeInTheDocument();
+    expect(await screen.findByText("Profile removed from saved artisans.")).toBeInTheDocument();
     expect(fetcher.mock.calls.some(([, options]) => options?.method === "DELETE")).toBe(true);
   });
 

@@ -12,6 +12,7 @@ import {
   Lock,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { techAudio } from "@/lib/artisan-chat-engine";
 import {
   api,
@@ -51,6 +52,13 @@ export function BrowsePage({ filters }: { filters: BrowseSearch }) {
   const [geoBusy, setGeoBusy] = useState(false);
   const categories = useCategories();
   const page = filters.page || 1;
+  const hasActiveFilters = Boolean(
+    filters.search_term ||
+    filters.category_slug ||
+    filters.county_id ||
+    filters.sub_county_id ||
+    filters.latitude !== undefined,
+  );
   useEffect(() => {
     setTerm(filters.search_term || "");
   }, [filters.search_term]);
@@ -59,6 +67,12 @@ export function BrowsePage({ filters }: { filters: BrowseSearch }) {
   }, [filters.radius_km]);
   const update = (patch: Partial<BrowseSearch>) =>
     navigate({ to: "/browse", search: { ...filters, ...patch, page: patch.page || 1 } });
+  const clearFilters = () => {
+    setTerm("");
+    setRadiusDraft("10");
+    setGeoError("");
+    navigate({ to: "/browse", search: {} });
+  };
   const results = useQuery({
     queryKey: ["search", filters],
     queryFn: ({ signal }) =>
@@ -123,6 +137,14 @@ export function BrowsePage({ filters }: { filters: BrowseSearch }) {
         <div className="form-actions filter-actions">
           <Button type="submit">
             <Search /> Search services
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            disabled={!hasActiveFilters && !term}
+            onClick={clearFilters}
+          >
+            Clear filters
           </Button>
           <Button
             type="button"
@@ -195,7 +217,10 @@ export function BrowsePage({ filters }: { filters: BrowseSearch }) {
           <ErrorNotice error={results.error} retry={() => results.refetch()} />
         ) : (
           <>
-            <p className="form-hint">{results.data?.total || 0} services found</p>
+            <p className="form-hint marketplace-result-summary" aria-live="polite">
+              {results.data?.total || 0} {results.data?.total === 1 ? "service" : "services"} found
+              {hasActiveFilters ? " matching your filters" : ""}
+            </p>
             {results.data?.items.length ? (
               <div className="artisan-results-grid">
                 {results.data.items.map((service) => {
@@ -204,9 +229,18 @@ export function BrowsePage({ filters }: { filters: BrowseSearch }) {
                 })}
               </div>
             ) : (
-              <Empty title="No services found" icon={Search}>
-                Try a different search or widen your location.
-              </Empty>
+              <div className="marketplace-no-results">
+                <Empty title="No services found" icon={Search}>
+                  {hasActiveFilters
+                    ? "Try changing your search or clearing one or more filters."
+                    : "Try searching for a different service or category."}
+                </Empty>
+                {hasActiveFilters && (
+                  <Button variant="outline" onClick={clearFilters}>
+                    Clear all filters
+                  </Button>
+                )}
+              </div>
             )}
             <Pagination
               page={page}
@@ -245,8 +279,11 @@ export function ListingPage({ id }: { id: string }) {
   const [contactBusy, setContactBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [availabilitySlotId, setAvailabilitySlotId] = useState("");
+  const [pendingBooking, setPendingBooking] = useState<{ slotId: number; notes: string } | null>(
+    null,
+  );
   const service = listing.data;
-  async function book(e: React.FormEvent<HTMLFormElement>) {
+  function reviewBooking(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (!service) return;
     setError("");
@@ -255,19 +292,25 @@ export function ListingPage({ id }: { id: string }) {
       setError("Please select an available appointment time.");
       return;
     }
-    setBusy(true);
     const notes = String(new FormData(e.currentTarget).get("notes") || "");
+    setPendingBooking({ slotId: Number(availabilitySlotId), notes });
+  }
+  async function confirmBooking() {
+    if (!service || !pendingBooking) return;
+    setBusy(true);
+    setError("");
     try {
       const result = await api<{ message: string }>("/bookings", {
         method: "POST",
         body: {
           artisan_id: service.artisan_id,
           service_id: service.id,
-          availability_slot_id: Number(availabilitySlotId),
-          notes,
+          availability_slot_id: pendingBooking.slotId,
+          notes: pendingBooking.notes,
         },
       });
       setSuccess(result.message || "Your booking request has been sent.");
+      setPendingBooking(null);
       query.invalidateQueries({ queryKey: ["bookings"] });
       query.invalidateQueries({ queryKey: ["artisan-availability", service.artisan_id] });
     } catch (e) {
@@ -315,7 +358,8 @@ export function ListingPage({ id }: { id: string }) {
             <section>
               <div className="section-label">
                 {categories.data?.find((c) => c.id === service.category_id)?.name ||
-                  `Category #${service.category_id}`}
+                  service.specialty ||
+                  "Service category"}
               </div>
               <h1 className="page-title">{service.title}</h1>
               <Link className="text-link" to="/artisans/$id" params={{ id: service.artisan_id }}>
@@ -349,7 +393,7 @@ export function ListingPage({ id }: { id: string }) {
                 <>
                   <p className="form-hint">Times are shown in Nairobi time (EAT).</p>
                   {user.role === "customer" && (
-                    <form className="form-stack" onSubmit={book}>
+                    <form className="form-stack" onSubmit={reviewBooking}>
                       {availability.isLoading ? (
                         <p className="form-hint">Loading available appointment times…</p>
                       ) : availability.error ? (
@@ -396,7 +440,7 @@ export function ListingPage({ id }: { id: string }) {
                         }
                         type="submit"
                       >
-                        {busy ? "Sending request…" : "Request a booking"}
+                        Review booking request
                         <CalendarCheck size={16} />
                       </Button>
                     </form>
@@ -473,6 +517,50 @@ export function ListingPage({ id }: { id: string }) {
           </div>
         )
       )}
+      <Dialog
+        open={!!pendingBooking}
+        onOpenChange={(open) => {
+          if (!open && !busy) setPendingBooking(null);
+        }}
+      >
+        <DialogContent className="booking-action-dialog">
+          <DialogTitle className="booking-action-title">Confirm booking request</DialogTitle>
+          <DialogDescription className="booking-action-description">
+            Review the appointment details before sending your request. The artisan will need to
+            accept it before the booking is confirmed.
+          </DialogDescription>
+          <div className="booking-review-summary">
+            <strong>{service?.title}</strong>
+            <span>{service?.artisan_name || "Selected artisan"}</span>
+            <span>
+              {pendingBooking && availability.data
+                ? (() => {
+                    const selected = availability.data.find(
+                      (slot) => slot.id === pendingBooking.slotId,
+                    );
+                    return selected
+                      ? `${nairobiDate(selected.starts_at)} – ${nairobiDate(selected.ends_at)}`
+                      : "Selected appointment time";
+                  })()
+                : "Selected appointment time"}
+            </span>
+            {pendingBooking?.notes && <span>Notes: {pendingBooking.notes}</span>}
+          </div>
+          <div className="booking-action-actions form-actions">
+            <Button type="button" disabled={busy} onClick={confirmBooking}>
+              {busy ? "Sending request…" : "Send booking request"}
+            </Button>
+            <Button
+              variant="ghost"
+              type="button"
+              disabled={busy}
+              onClick={() => setPendingBooking(null)}
+            >
+              Back to edit
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </main>
   );
 }

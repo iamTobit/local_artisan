@@ -41,6 +41,24 @@ function mockBrowseRequests() {
   });
 }
 
+function mockLocationRequests() {
+  return vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+    const url = String(input);
+    if (url.includes("/marketplace/search"))
+      return Response.json({ total: 0, page: 1, pages: 0, items: [] });
+    if (url.endsWith("/marketplace/categories")) return Response.json([]);
+    if (url.endsWith("/locations/counties"))
+      return Response.json([
+        {
+          id: 47,
+          name: "Nairobi",
+          sub_counties: [{ id: 18, name: "Westlands" }],
+        },
+      ]);
+    throw new Error(`Unexpected request: ${url}`);
+  });
+}
+
 describe("Marketplace search URL state", () => {
   it("syncs the search field when route filters change", async () => {
     mockBrowseRequests();
@@ -87,5 +105,32 @@ describe("Marketplace search URL state", () => {
         page: 1,
       },
     });
+  });
+
+  it("loads nested county and subcounty options without a second lookup", async () => {
+    mockLocationRequests();
+    renderBrowse({ county_id: "47", page: 1 });
+
+    expect(await screen.findByRole("option", { name: "Westlands" })).toBeInTheDocument();
+    expect(screen.getByLabelText("County")).toHaveValue("47");
+    expect(screen.getByLabelText("Subcounty")).not.toBeDisabled();
+  });
+
+  it("clears all active filters and returns to the default browse state", async () => {
+    mockBrowseRequests();
+    renderBrowse({ search_term: "plumbing", category_slug: "repairs", page: 2 });
+
+    fireEvent.click(await screen.findByRole("button", { name: "Clear filters" }));
+
+    expect(navigation.navigate).toHaveBeenCalledWith({ to: "/browse", search: {} });
+    expect(screen.getByPlaceholderText("Search services…")).toHaveValue("");
+  });
+
+  it("offers recovery when filters produce no results", async () => {
+    mockBrowseRequests();
+    renderBrowse({ county_id: "47", page: 1 });
+
+    expect(await screen.findByText("No services found")).toBeInTheDocument();
+    expect(screen.getByText("Clear all filters")).toBeInTheDocument();
   });
 });

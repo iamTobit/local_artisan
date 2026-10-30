@@ -17,6 +17,7 @@ const service = {
   id: "service-uuid",
   artisan_id: "artisan-uuid",
   category_id: 1,
+  specialty: "Woodwork",
   title: "Dining set restoration",
   description: "Repair and restoration for wooden dining sets.",
   price_type: "fixed" as const,
@@ -54,13 +55,22 @@ describe("Listing booking form", () => {
       </QueryClientProvider>,
     );
 
+    expect(await screen.findByText("Woodwork")).toBeInTheDocument();
+    expect(screen.queryByText("Category #1")).not.toBeInTheDocument();
+
     fireEvent.change(await screen.findByLabelText("Available date and time"), {
       target: { value: "42" },
     });
     fireEvent.change(screen.getByLabelText("Notes (optional)"), {
       target: { value: "I would like a six-seater dining set restored." },
     });
-    fireEvent.click(screen.getByRole("button", { name: /Request a booking/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Review booking request/i }));
+    expect(
+      fetcher.mock.calls.some(
+        ([input, init]) => String(input).endsWith("/bookings") && init?.method === "POST",
+      ),
+    ).toBe(false);
+    fireEvent.click(screen.getByRole("button", { name: /Send booking request/i }));
 
     await screen.findByText("Booking request sent successfully");
     const bookingCall = fetcher.mock.calls.find(

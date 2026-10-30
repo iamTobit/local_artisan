@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { OnboardingPage } from "@/components/local/artisan";
 
@@ -37,10 +37,16 @@ describe("Returning artisan profile form", () => {
       longitude: 36.8,
       work_photos: [],
     };
-    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+    const fetcher = vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
       const url = String(input);
-      if (url.endsWith("/locations/counties")) return Response.json([]);
+      if (url.endsWith("/locations/counties")) {
+        return Response.json([
+          { id: 47, name: "Nairobi", sub_counties: [{ id: 18, name: "Westlands" }] },
+        ]);
+      }
       if (url.endsWith("/artisan/profile")) return Response.json({ profile });
+      if (url.endsWith("/artisan/profile") && init?.method === "PUT")
+        return Response.json({ message: "Profile updated successfully.", profile });
       throw new Error(`Unexpected request: ${url}`);
     });
     const queryClient = new QueryClient({
@@ -54,8 +60,11 @@ describe("Returning artisan profile form", () => {
     );
 
     expect(await screen.findByDisplayValue(profile.bio)).toBeInTheDocument();
+    expect(screen.getByDisplayValue(String(profile.experience_years))).toBeInTheDocument();
     expect(screen.getByDisplayValue(profile.primary_phone)).toBeInTheDocument();
     expect(screen.getByDisplayValue(profile.specific_address)).toBeInTheDocument();
+    expect(screen.getByLabelText("County")).toHaveValue(String(profile.county_id));
+    expect(screen.getByLabelText("Subcounty")).toHaveValue(String(profile.sub_county_id));
     expect(screen.getByDisplayValue(String(profile.latitude))).toBeInTheDocument();
     expect(screen.getByDisplayValue(String(profile.longitude))).toBeInTheDocument();
     expect(
@@ -66,5 +75,19 @@ describe("Returning artisan profile form", () => {
         return hasText && element?.tagName.toLowerCase() === "p";
       }),
     ).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("County"), { target: { value: "47" } });
+    fireEvent.change(screen.getByLabelText("Subcounty"), { target: { value: "18" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save profile" }));
+
+    await waitFor(() =>
+      expect(fetcher).toHaveBeenCalledWith(
+        expect.stringContaining("/artisan/profile"),
+        expect.objectContaining({
+          method: "PUT",
+          body: expect.stringContaining('"county_id":47'),
+        }),
+      ),
+    );
   });
 });

@@ -370,25 +370,21 @@ export function LocationFields({
     queryFn: ({ signal }) => api<Location[]>("/locations/counties", { signal }),
     retry: false,
   });
+  const selectedCounty = counties.data?.find((item) => String(item.id) === county);
+  const nestedSubcounties = selectedCounty?.sub_counties || [];
   const subs = useQuery({
     queryKey: ["subcounties", county],
     queryFn: ({ signal }) =>
       api<Location[]>(`/locations/counties/${county}/subcounties`, { signal }),
-    enabled: !!county,
+    enabled: !!county && nestedSubcounties.length === 0,
     retry: false,
   });
+  const subcountyOptions = nestedSubcounties.length ? nestedSubcounties : subs.data || [];
   return (
     <>
       <label>
         County
-        <select
-          value={county}
-          required={required}
-          onChange={(e) => {
-            onCounty(e.target.value);
-            onSubcounty("");
-          }}
-        >
+        <select value={county} required={required} onChange={(e) => onCounty(e.target.value)}>
           <option value="">{counties.isLoading ? "Loading counties…" : "All counties"}</option>
           {counties.data?.map((v) => (
             <option key={v.id} value={v.id}>
@@ -406,9 +402,11 @@ export function LocationFields({
           onChange={(e) => onSubcounty(e.target.value)}
         >
           <option value="">
-            {subs.isLoading && county ? "Loading subcounties…" : "All subcounties"}
+            {subs.isLoading && county && nestedSubcounties.length === 0
+              ? "Loading subcounties…"
+              : "All subcounties"}
           </option>
-          {subs.data?.map((v) => (
+          {subcountyOptions.map((v) => (
             <option key={v.id} value={v.id}>
               {v.name}
             </option>

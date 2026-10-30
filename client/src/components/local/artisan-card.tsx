@@ -92,7 +92,7 @@ export function ArtisanCard({
         </div>
       </div>
       <div className="artisan-card-tags">
-        <span>{category?.name || `Category #${service.category_id}`}</span>
+        <span>{category?.name || service.specialty || "Service category"}</span>
         <span>
           {service.price_type === "fixed"
             ? "Fixed price"

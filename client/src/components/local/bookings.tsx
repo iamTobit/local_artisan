@@ -18,6 +18,14 @@ const statusActionLabels: Record<BookingStatusAction, string> = {
   completed: "Mark completed",
   cancelled: "Cancel",
 };
+const bookingStatusLabels: Record<string, string> = {
+  pending: "Pending",
+  accepted: "Accepted",
+  dispatched: "Dispatched",
+  completed: "Completed",
+  cancelled: "Cancelled",
+  disputed: "Disputed",
+};
 export function BookingsPage() {
   const { user } = useAuth();
   const [page, setPage] = useState(1);
@@ -87,6 +95,26 @@ export function BookingsPage() {
     setSuccess("");
     setAction({ kind, booking, status });
   }
+  const actionTitle =
+    action?.kind === "checkout"
+      ? "Simulated M-Pesa request"
+      : action?.kind === "review"
+        ? "Review your booking"
+        : action?.kind === "dispute"
+          ? "Raise a dispute"
+          : action?.status === "cancelled"
+            ? "Cancel booking"
+            : `Update booking to ${bookingStatusLabels[action?.status || ""] || action?.status}`;
+  const submitLabel =
+    action?.kind === "checkout"
+      ? "Send payment request"
+      : action?.kind === "review"
+        ? "Publish review"
+        : action?.kind === "dispute"
+          ? "Submit dispute"
+          : action?.status === "cancelled"
+            ? "Confirm cancellation"
+            : `Confirm ${statusActionLabels[action?.status as BookingStatusAction] || "update"}`;
   return (
     <>
       <h1 className="page-title">
@@ -106,7 +134,12 @@ export function BookingsPage() {
               <div>
                 <h3>
                   {b.service_title || "Service details unavailable"}{" "}
-                  <span className={`status status-${b.status}`}>{b.status}</span>
+                  <span
+                    className={`status status-${b.status}`}
+                    aria-label={`Booking status: ${bookingStatusLabels[b.status] || b.status}`}
+                  >
+                    {bookingStatusLabels[b.status] || b.status}
+                  </span>
                 </h3>
                 <p>{nairobiDate(b.scheduled_date)} · Nairobi time</p>
                 <p>
@@ -175,22 +208,16 @@ export function BookingsPage() {
         }}
       >
         <DialogContent className="booking-action-dialog">
-          <DialogTitle className="booking-action-title">
-            {action?.kind === "checkout"
-              ? "Simulated M-Pesa request"
-              : action?.kind === "review"
-                ? "Review your booking"
-                : action?.kind === "dispute"
-                  ? "Raise a dispute"
-                  : `Confirm: ${action?.status}`}
-          </DialogTitle>
+          <DialogTitle className="booking-action-title">{actionTitle}</DialogTitle>
           <DialogDescription className="booking-action-description">
             Booking #{action?.booking.id}
             {action?.kind === "checkout"
               ? " · This is a simulated payment request, not a real transaction."
               : action?.kind === "dispute"
                 ? " · Filing a dispute freezes escrow tracking. The service will check whether this booking is eligible."
-                : " · The service will check whether this action is allowed."}
+                : action?.status === "cancelled"
+                  ? " · This cannot be undone after it is submitted."
+                  : " · Review the details before submitting this change."}
           </DialogDescription>
           <form className="booking-action-form form-stack" onSubmit={submit}>
             {!success && (
@@ -238,8 +265,12 @@ export function BookingsPage() {
                   </p>
                 )}
                 <div className="booking-action-actions form-actions">
-                  <Button type="submit" disabled={busy}>
-                    {busy ? "Submitting…" : "Confirm and submit"}
+                  <Button
+                    type="submit"
+                    variant={action?.status === "cancelled" ? "destructive" : "default"}
+                    disabled={busy}
+                  >
+                    {busy ? "Submitting…" : submitLabel}
                   </Button>
                   <Button
                     variant="ghost"

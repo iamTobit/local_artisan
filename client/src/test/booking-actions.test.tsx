@@ -66,7 +66,7 @@ describe("Booking status actions", () => {
     renderBookings("customer", "accepted", []);
 
     expect(await screen.findByText("Artisan: Amina Artisan")).toBeInTheDocument();
-    await screen.findByText("accepted");
+    await screen.findByText("Accepted");
     expect(screen.queryByRole("button", { name: "Cancel booking" })).not.toBeInTheDocument();
   });
 

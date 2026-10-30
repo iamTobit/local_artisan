@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { Trash2, Plus, ArrowRight, Pencil } from "lucide-react";
+import { Trash2, Plus, ArrowRight, Pencil, LocateFixed } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import {
@@ -34,6 +34,13 @@ export function OnboardingPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [coordinates, setCoordinates] = useState<{ latitude: number; longitude: number } | null>(
+    null,
+  );
+  const [locationBusy, setLocationBusy] = useState(false);
+  const [locationError, setLocationError] = useState("");
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const [photoName, setPhotoName] = useState("");
   const query = useQueryClient();
   const { user } = useAuth();
   const profileQuery = useQuery({
@@ -44,6 +51,32 @@ export function OnboardingPage() {
   });
   const profile = profileQuery.data?.profile ?? null;
   const editing = profile !== null;
+  const profileId = profile?.id;
+  const profileCountyId = profile?.county_id;
+  const profileSubCountyId = profile?.sub_county_id;
+  const profileLatitude = profile?.latitude;
+  const profileLongitude = profile?.longitude;
+
+  useEffect(() => {
+    if (profileId) {
+      setCounty(profileCountyId ? String(profileCountyId) : "");
+      setSub(profileSubCountyId ? String(profileSubCountyId) : "");
+      setCoordinates(
+        profileLatitude !== null &&
+          profileLatitude !== undefined &&
+          profileLongitude !== null &&
+          profileLongitude !== undefined
+          ? { latitude: profileLatitude, longitude: profileLongitude }
+          : null,
+      );
+    }
+  }, [profileId, profileCountyId, profileSubCountyId, profileLatitude, profileLongitude]);
+
+  useEffect(() => {
+    return () => {
+      if (photoPreview) URL.revokeObjectURL(photoPreview);
+    };
+  }, [photoPreview]);
 
   if (profileQuery.isLoading) return <Loading />;
   if (
@@ -58,24 +91,28 @@ export function OnboardingPage() {
     setSuccess("");
     const f = new FormData(e.currentTarget);
     const image = f.get("profile_image");
+    if (image instanceof File && image.size && !image.type.startsWith("image/")) {
+      setError("Choose an image file for your profile photo.");
+      return;
+    }
     if (image instanceof File && image.size > 5 * 1024 * 1024) {
       setError("Your photo must be no larger than 5 MB.");
       return;
     }
-    const lat = String(f.get("latitude") || "");
-    const lng = String(f.get("longitude") || "");
-    if (Boolean(lat) !== Boolean(lng)) {
-      setError("Please provide both latitude and longitude, or leave both blank.");
-      return;
-    }
+    const lat = coordinates?.latitude;
+    const lng = coordinates?.longitude;
     setBusy(true);
     try {
       if (editing) {
         const body = {
           bio: String(f.get("bio")),
+          experience_years: Number(f.get("experience_years")),
           primary_phone: String(f.get("primary_phone")),
           specific_address: String(f.get("specific_address")),
-          ...(lat && lng ? { latitude: Number(lat), longitude: Number(lng) } : {}),
+          county_id: Number(county),
+          sub_county_id: Number(sub),
+          latitude: lat ?? null,
+          longitude: lng ?? null,
         };
         const result = await api<{ message: string; profile: Profile }>("/artisan/profile", {
           method: "PUT",
@@ -86,9 +123,12 @@ export function OnboardingPage() {
       } else {
         f.set("county_id", county);
         f.set("sub_county_id", sub);
-        if (!lat) {
+        if (lat === undefined || lng === undefined) {
           f.delete("latitude");
           f.delete("longitude");
+        } else {
+          f.set("latitude", String(lat));
+          f.set("longitude", String(lng));
         }
         if (!(image instanceof File) || !image.size) f.delete("profile_image");
         const result = await api<{ message: string; profile: Profile }>("/artisan/onboard", {
@@ -104,13 +144,45 @@ export function OnboardingPage() {
       setBusy(false);
     }
   }
+  function useCurrentLocation() {
+    setLocationError("");
+    if (!navigator.geolocation) {
+      setLocationError("Location services are not available in this browser.");
+      return;
+    }
+    setLocationBusy(true);
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setCoordinates({
+          latitude: Number(position.coords.latitude.toFixed(6)),
+          longitude: Number(position.coords.longitude.toFixed(6)),
+        });
+        setLocationBusy(false);
+      },
+      () => {
+        setLocationError(
+          "We could not access your location. You can continue without coordinates.",
+        );
+        setLocationBusy(false);
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 300000 },
+    );
+  }
   async function upload(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const f = new FormData(e.currentTarget);
     const image = f.get("profile_image");
     setError("");
     setSuccess("");
-    if (!(image instanceof File) || !image.size || image.size > 5 * 1024 * 1024) {
+    if (!(image instanceof File) || !image.size) {
+      setError("Choose a profile photo to upload.");
+      return;
+    }
+    if (!image.type.startsWith("image/")) {
+      setError("Choose an image file for your profile photo.");
+      return;
+    }
+    if (image.size > 5 * 1024 * 1024) {
       setError("Choose a photo no larger than 5 MB.");
       return;
     }
@@ -121,12 +193,34 @@ export function OnboardingPage() {
         { method: "PUT", body: f },
       );
       await profileQuery.refetch();
+      setPhotoPreview(null);
+      setPhotoName("");
       setSuccess(r.message || "Profile photo updated.");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Upload unsuccessful.");
     } finally {
       setBusy(false);
     }
+  }
+  function handlePhotoChange(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.currentTarget.files?.[0];
+    setPhotoName(file?.name || "");
+    setError("");
+    if (!file || !file.size) {
+      setPhotoPreview(null);
+      return;
+    }
+    if (!file.type.startsWith("image/")) {
+      setPhotoPreview(null);
+      setError("Choose an image file for your profile photo.");
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setPhotoPreview(null);
+      setError("Your photo must be no larger than 5 MB.");
+      return;
+    }
+    setPhotoPreview(URL.createObjectURL(file));
   }
   return (
     <>
@@ -143,32 +237,48 @@ export function OnboardingPage() {
           {profile.sub_county_name ? `, ${profile.sub_county_name}` : ""}
         </p>
       )}
-      <form key={editing ? "edit" : "setup"} className="artisan-form form-stack" onSubmit={submit}>
-        <label>
-          About you
-          <textarea
-            name="bio"
-            required
-            minLength={10}
-            maxLength={1000}
-            defaultValue={profile?.bio || ""}
-            placeholder="Your skills, your approach, and what you love about your work…"
-          />
-        </label>
-        <div className="form-grid">
-          {!editing && (
-            <label>
-              Years of experience
-              <input
-                name="experience_years"
-                type="number"
-                required
-                min={0}
-                max={50}
-                defaultValue={0}
-              />
-            </label>
-          )}
+      <form
+        key={editing ? "edit" : "setup"}
+        className="artisan-form setup-form form-stack"
+        onSubmit={submit}
+      >
+        <section className="setup-form-section">
+          <div className="setup-form-heading">
+            <div>
+              <h2>Introduction</h2>
+              <p>Help customers understand your skills and experience.</p>
+            </div>
+          </div>
+          <label>
+            About you
+            <textarea
+              name="bio"
+              required
+              minLength={10}
+              maxLength={1000}
+              defaultValue={profile?.bio || ""}
+              placeholder="Your skills, your approach, and what you love about your work…"
+            />
+          </label>
+          <label>
+            Years of experience
+            <input
+              name="experience_years"
+              type="number"
+              required
+              min={0}
+              max={50}
+              defaultValue={profile?.experience_years ?? 0}
+            />
+          </label>
+        </section>
+        <section className="setup-form-section">
+          <div className="setup-form-heading">
+            <div>
+              <h2>Contact and location</h2>
+              <p>Tell customers how to reach you and where you work.</p>
+            </div>
+          </div>
           <label>
             Primary phone number
             <input
@@ -181,65 +291,93 @@ export function OnboardingPage() {
               placeholder="+254712345678"
             />
           </label>
-          {!editing && (
-            <LocationFields
-              county={county}
-              subcounty={sub}
-              onCounty={setCounty}
-              onSubcounty={setSub}
+          <LocationFields
+            county={county}
+            subcounty={sub}
+            onCounty={(value) => {
+              setCounty(value);
+              setSub("");
+            }}
+            onSubcounty={setSub}
+            required
+          />
+          <label>
+            Specific address
+            <input
+              name="specific_address"
               required
+              minLength={2}
+              maxLength={255}
+              defaultValue={profile?.specific_address || ""}
+              placeholder="Street, estate, or a nearby landmark"
+            />
+          </label>
+        </section>
+        <section className="setup-form-section">
+          <div className="setup-form-heading">
+            <div>
+              <h2>Map location</h2>
+              <p>Use your current location to help customers find services nearby.</p>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={useCurrentLocation}
+              disabled={locationBusy}
+            >
+              <LocateFixed /> {locationBusy ? "Locating…" : "Use current location"}
+            </Button>
+          </div>
+          {coordinates ? (
+            <p className="location-selected" role="status">
+              Location captured · {coordinates.latitude.toFixed(6)},{" "}
+              {coordinates.longitude.toFixed(6)}
+            </p>
+          ) : (
+            <p className="form-hint">No map location selected. This is optional.</p>
+          )}
+          {locationError && (
+            <p className="inline-error" role="alert">
+              {locationError}
+            </p>
+          )}
+          <input type="hidden" name="latitude" value={coordinates?.latitude ?? ""} readOnly />
+          <input type="hidden" name="longitude" value={coordinates?.longitude ?? ""} readOnly />
+        </section>
+        <section className="setup-form-section setup-photo-section">
+          <div className="setup-form-heading">
+            <div>
+              <h2>Profile photo</h2>
+              <p>Use a clear photo that helps customers recognize you.</p>
+            </div>
+          </div>
+          {editing && profile.profile_image_url && !photoPreview && (
+            <img
+              className="artisan-profile-preview"
+              src={profile.profile_image_url}
+              alt={`${user?.name || "Your"} artisan profile`}
             />
           )}
-        </div>
-        <label>
-          Specific address
-          <input
-            name="specific_address"
-            required
-            minLength={2}
-            maxLength={255}
-            defaultValue={profile?.specific_address || ""}
-            placeholder="Street, estate, or a nearby landmark"
-          />
-        </label>
-        {editing && profile.profile_image_url && (
-          <img
-            className="artisan-profile-preview"
-            src={profile.profile_image_url}
-            alt={`${user?.name || "Your"} artisan profile`}
-          />
-        )}
-        <div className="form-grid">
-          <label>
-            Latitude (optional)
-            <input
-              name="latitude"
-              type="number"
-              step="any"
-              min={-90}
-              max={90}
-              defaultValue={profile?.latitude ?? ""}
-            />
-          </label>
-          <label>
-            Longitude (optional)
-            <input
-              name="longitude"
-              type="number"
-              step="any"
-              min={-180}
-              max={180}
-              defaultValue={profile?.longitude ?? ""}
-            />
-          </label>
-        </div>
-        <span className="form-hint">Provide both coordinates, or leave both blank.</span>
-        {!editing && (
-          <label>
-            Profile photo (optional, up to 5 MB)
-            <input type="file" name="profile_image" accept="image/*" />
-          </label>
-        )}
+          {!editing && (
+            <label className="artisan-photo-picker">
+              Profile photo (optional, up to 5 MB)
+              <input
+                type="file"
+                name="profile_image"
+                accept="image/*"
+                onChange={handlePhotoChange}
+              />
+              {photoPreview && (
+                <img
+                  className="artisan-profile-preview"
+                  src={photoPreview}
+                  alt="Selected profile photo preview"
+                />
+              )}
+              {photoName && <span className="form-hint">Selected: {photoName}</span>}
+            </label>
+          )}
+        </section>
         {error && (
           <p className="inline-error" role="alert">
             {error}
@@ -260,9 +398,23 @@ export function OnboardingPage() {
       {editing && (
         <form className="artisan-form form-section form-stack" onSubmit={upload}>
           <h2>Your profile photo</h2>
-          <label>
+          <label className="artisan-photo-picker">
             Choose a photo (up to 5 MB)
-            <input name="profile_image" required type="file" accept="image/*" />
+            <input
+              name="profile_image"
+              required
+              type="file"
+              accept="image/*"
+              onChange={handlePhotoChange}
+            />
+            {photoPreview && (
+              <img
+                className="artisan-profile-preview"
+                src={photoPreview}
+                alt="Selected profile photo preview"
+              />
+            )}
+            {photoName && <span className="form-hint">Selected: {photoName}</span>}
           </label>
           <Button disabled={busy} type="submit">
             Update photo
@@ -326,7 +478,7 @@ export function ServicesPage() {
       form.reset();
       setEditing(null);
       setPriceType("fixed");
-      await query.invalidateQueries({ queryKey: ["artisan-services"] });
+      await query.refetchQueries({ queryKey: ["artisan-services"], exact: true });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Unable to add service.");
     } finally {
@@ -347,12 +499,19 @@ export function ServicesPage() {
   }
   async function remove() {
     if (!deleting) return;
+    const serviceBeingDeleted = deleting;
     setBusy(true);
     setError("");
+    setSuccess("");
     try {
-      await api(`/artisan/services/${deleting.id}`, { method: "DELETE" });
+      await api(`/artisan/services/${serviceBeingDeleted.id}`, { method: "DELETE" });
+      if (editing?.id === serviceBeingDeleted.id) {
+        setEditing(null);
+        setPriceType("fixed");
+      }
       setDeleting(null);
-      await query.invalidateQueries({ queryKey: ["artisan-services"] });
+      await query.refetchQueries({ queryKey: ["artisan-services"], exact: true });
+      setSuccess(`“${serviceBeingDeleted.title}” was removed from your catalog.`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Unable to delete service.");
     } finally {
@@ -363,8 +522,46 @@ export function ServicesPage() {
     e.preventDefault();
     const form = e.currentTarget;
     const data = new FormData(form);
+    const startsAt = String(data.get("starts_at") || "");
+    const endsAt = String(data.get("ends_at") || "");
     setSlotError("");
     setSlotSuccess("");
+    if (!startsAt || !endsAt) {
+      setSlotError("Choose both a start and end time.");
+      return;
+    }
+    let startsAtIso: string;
+    let endsAtIso: string;
+    try {
+      startsAtIso = nairobiLocalToIso(startsAt);
+      endsAtIso = nairobiLocalToIso(endsAt);
+    } catch {
+      setSlotError("Enter valid appointment times.");
+      return;
+    }
+    const startsAtTime = Date.parse(startsAtIso);
+    const endsAtTime = Date.parse(endsAtIso);
+    if (Number.isNaN(startsAtTime) || Number.isNaN(endsAtTime)) {
+      setSlotError("Enter valid appointment times.");
+      return;
+    }
+    if (startsAtTime <= Date.now()) {
+      setSlotError("Appointment times must start in the future.");
+      return;
+    }
+    if (endsAtTime <= startsAtTime) {
+      setSlotError("The end time must be after the start time.");
+      return;
+    }
+    const overlaps = availability.data?.some((slot) => {
+      const slotStart = Date.parse(slot.starts_at);
+      const slotEnd = Date.parse(slot.ends_at);
+      return startsAtTime < slotEnd && endsAtTime > slotStart;
+    });
+    if (overlaps) {
+      setSlotError("This appointment overlaps an existing availability slot.");
+      return;
+    }
     setSlotBusy(true);
     try {
       const result = await api<{ message?: string; slot: AvailabilitySlot }>(
@@ -372,8 +569,8 @@ export function ServicesPage() {
         {
           method: "POST",
           body: {
-            starts_at: nairobiLocalToIso(String(data.get("starts_at"))),
-            ends_at: nairobiLocalToIso(String(data.get("ends_at"))),
+            starts_at: startsAtIso,
+            ends_at: endsAtIso,
           },
         },
       );
@@ -406,53 +603,65 @@ export function ServicesPage() {
     <>
       <h1 className="page-title">Your skills, on show.</h1>
       <p className="page-subtitle">Build a service catalog that reflects what you do best.</p>
-      {services.isLoading ? (
-        <Loading />
-      ) : services.error ? (
-        <ErrorNotice error={services.error} retry={() => services.refetch()} />
-      ) : services.data?.length ? (
-        <div className="service-grid">
-          {services.data.map((s) => (
-            <article
-              className={
-                editing?.id === s.id ? "service-card service-card-editing" : "service-card"
-              }
-              key={s.id}
-            >
-              <h3>{s.title}</h3>
-              <p>{s.description}</p>
-              <div className="service-card-footer">
-                <strong>{price(s)}</strong>
-                <div className="row-actions">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    title={`Edit ${s.title}`}
-                    aria-label={`Edit ${s.title}`}
-                    onClick={() => editService(s)}
-                  >
-                    <Pencil />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    title={`Delete ${s.title}`}
-                    aria-label={`Delete ${s.title}`}
-                    onClick={() => {
-                      setDeleting(s);
-                      setError("");
-                    }}
-                  >
-                    <Trash2 />
-                  </Button>
-                </div>
-              </div>
-            </article>
-          ))}
+      <section className="service-catalog-section" aria-labelledby="service-catalog-heading">
+        <div className="service-catalog-heading">
+          <div>
+            <h2 id="service-catalog-heading">Service catalog</h2>
+            <p>Keep your offerings clear, current, and easy to compare.</p>
+          </div>
+          {services.data?.length ? <span>{services.data.length} listed</span> : null}
         </div>
-      ) : (
-        <Empty title="Your catalog starts here">Add your first service below.</Empty>
-      )}
+        {services.isLoading ? (
+          <Loading />
+        ) : services.error ? (
+          <ErrorNotice error={services.error} retry={() => services.refetch()} />
+        ) : services.data?.length ? (
+          <div className="service-grid">
+            {services.data.map((s) => (
+              <article
+                className={
+                  editing?.id === s.id ? "service-card service-card-editing" : "service-card"
+                }
+                key={s.id}
+              >
+                <h3>{s.title}</h3>
+                <p>{s.description}</p>
+                <div className="service-card-footer">
+                  <strong>{price(s)}</strong>
+                  <div className="row-actions">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      disabled={busy}
+                      title={`Edit ${s.title}`}
+                      aria-label={`Edit ${s.title}`}
+                      onClick={() => editService(s)}
+                    >
+                      <Pencil />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      disabled={busy}
+                      title={`Delete ${s.title}`}
+                      aria-label={`Delete ${s.title}`}
+                      onClick={() => {
+                        setDeleting(s);
+                        setError("");
+                        setSuccess("");
+                      }}
+                    >
+                      <Trash2 />
+                    </Button>
+                  </div>
+                </div>
+              </article>
+            ))}
+          </div>
+        ) : (
+          <Empty title="Your catalog starts here">Add your first service below.</Empty>
+        )}
+      </section>
       <section className="artisan-form form-section artisan-form-section">
         <h2>Appointment availability</h2>
         <p className="form-hint">Times are entered and displayed in Nairobi time (EAT).</p>
