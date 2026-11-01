@@ -1,41 +1,4 @@
-.lovable/
-.gpteng/
-.bolt/
-.cursor/
-.copilot/
-.cline/
-.roo/
-agents.md
-
-# OS / editor files
-.DS_Store
-Thumbs.db
-.idea/
-.vscode/
-*.swp
-*.swo
-*~
-
-# Python / Flask
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-.pytest_cache/
-.coverage
-htmlcov/
-.tox/
-.mypy_cache/
-.pyre/
-*.egg-info/
-*.egg
-.venv/
-venv/
-env/
-ENV/
-
-# Local environment files
+# Local-only environment and secret files
 .env
 .env.*
 !.env.example
@@ -43,55 +6,88 @@ ENV/
 **/.env.*
 !**/.env.example
 
-# Node / Vite / Bun
+# JavaScript dependencies and generated output
 node_modules/
 **/node_modules/
 dist/
+**/dist/
 build/
-.next/
-out/
+**/build/
 coverage/
+**/coverage/
+.vite/
+**/.vite/
+.cache/
+**/.cache/
 .nitro/
 .vinxi/
+.output/
+.tanstack/tmp/
+out/
+.next/
+
+# Logs and test/coverage reports
 *.log
 npm-debug.log*
 yarn-debug.log*
-yarn-error.log*
 pnpm-debug.log*
-bun.lockb
-bun.lock
-bunfig.toml
+bun-debug.log*
+.coverage
+.coverage.*
+htmlcov/
+.pytest_cache/
+.tox/
+coverage.xml
+*.lcov
+.nyc_output/
+playwright-report/
+test-results/
 
-# Code Quality & Formatters
-.prettiercache
+# Python virtual environments, bytecode, and packaging output
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+ENV/
+.mypy_cache/
+.pyre/
+.ruff_cache/
+*.egg-info/
+*.egg
+
+# IDE and editor state
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
 .eslintcache
-.prettierrc
+.prettiercache
 
-# Project generated output
-client/dist/
-client/build/
-client/.vite/
-client/.cache/
+# Operating-system files
+.DS_Store
+._*
+Thumbs.db
+Desktop.ini
 
-# Database / local services
+# Local databases and service data
+*.sqlite
 *.sqlite3
 *.db
-
-# Local service data
 server/logs/
-server/.pytest_cache/
-server/.coverage
-server/htmlcov/
-server/.tox/
-server/.venv/
-server/venv/
-server/env/
-server/ENV/
 
-# Migrations
-!server/migrations/versions/.gitkeep
-
-# Framework Specific Outputs
-.output/
-.tanstack/tmp/
+# Local tooling and generated deployment output
+.lovable/
+.gpteng/
+.bolt/
+.cursor/
+.copilot/
+.cline/
+.roo/
 .wrangler/deploy
+
+# Preserve the migrations directory placeholder when present
+!server/migrations/versions/.gitkeep
