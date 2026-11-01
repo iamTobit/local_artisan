@@ -1,24 +1,68 @@
-# Welcome Home Hub
+# Local Artisan Client
 
-Please also include a landing page, an about section, and a footer
+The client is a React 19 and TypeScript application built with Vite and TanStack Start/Router. Tailwind CSS 4 supplies utility-first styling; reusable components use Radix UI primitives and Lucide icons. TanStack Query handles server state, and the typed API client in `src/lib/local` connects the UI to the Flask API.
 
-This project was built with [Lovable](https://lovable.dev).
+## Requirements
 
-## Build with Lovable
+- Node.js 22 or newer and npm
+- A running Local Artisan API (see [server setup](../server/README.md))
 
-Continue developing this project in the [Lovable editor](https://lovable.dev/projects/b91b7613-c2dd-439e-88de-f0870e984a23).
+Bun is also available as a package manager; the repository includes `bun.lock` and `bunfig.toml`.
 
-- **Ship faster**: describe what you want to build and Lovable handles the code.
-- **Stay in sync**: every change made in Lovable is committed straight to this repository.
-- **Full ownership**: this code is yours. Push to `main` on GitHub and your changes sync back into Lovable, ready for your next prompt.
+## Configuration
 
-## Development
+Create a local environment file from the example:
 
-Prefer working locally? You need Node.js and npm — [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating).
+```bash
+cp .env.example .env
+```
 
-```sh
-git clone <this-repository-url>
-cd <repository-name>
-npm i
+Set `VITE_API_BASE_URL` to the API's base URL, including `/api`. The default is:
+
+```dotenv
+VITE_API_BASE_URL=http://127.0.0.1:5000/api
+```
+
+Only put values intended for browser exposure in `VITE_*` variables. Do not put credentials, signing secrets, or other private configuration in the client environment.
+
+## Install and Run
+
+From this directory:
+
+```bash
+npm ci
 npm run dev
 ```
+
+Vite prints the local development URL when the server starts. Keep the Flask API running separately.
+
+## Build, Test, and Lint
+
+```bash
+npm run build       # Production build
+npm run build:dev   # Development-mode build
+npm run preview     # Serve the most recent production build locally
+npm test            # Run the Vitest suite once
+npm run test:watch  # Run Vitest in watch mode
+npm run lint        # Run ESLint
+```
+
+## Project Structure
+
+```text
+src/
+├── components/
+│   ├── common/      # Shared chat components
+│   ├── local/       # Marketplace, account, artisan, and booking screens
+│   └── ui/          # Reusable UI primitives
+├── hooks/           # Shared React hooks
+├── lib/
+│   └── local/       # Typed API client and client-side domain helpers
+├── routes/          # TanStack file-based routes and account routes
+├── test/            # Vitest and Testing Library tests
+├── router.tsx       # Router setup
+├── server.ts        # TanStack Start server entry
+└── styles.css       # Global styles and shared design tokens
+```
+
+Static files live in `public/`; Vite, TypeScript, Vitest, and ESLint configuration are at the client root.
