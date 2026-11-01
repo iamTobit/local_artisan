@@ -142,7 +142,7 @@ export interface SavedArtisan {
   artisan: PublicArtisan;
 }
 export const API_BASE = (
-  import.meta.env["VITE_API_BASE_URL"] || "http://127.0.0.1:5000/api"
+  import.meta.env["VITE_API_URL"]
 ).replace(/\/$/, "");
 const KEY = "local-artisan-session";
 export function getStoredAuth(): { access_token: string; user: User } | null {
